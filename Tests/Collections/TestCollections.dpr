@@ -46,7 +46,8 @@ uses
   TestCollections.Concurrent in 'TestCollections.Concurrent.pas',
   TestCollections.Channels in 'TestCollections.Channels.pas',
   TestCollections.Algorithms in 'TestCollections.Algorithms.pas',
-  TestCollections.Comparers in 'TestCollections.Comparers.pas';
+  TestCollections.Comparers in 'TestCollections.Comparers.pas',
+  TestCollections.QueuesAndStacks in 'TestCollections.QueuesAndStacks.pas';
 
 begin
   SetConsoleCharSet;
@@ -80,7 +81,8 @@ begin
           TConcurrentDictionaryTests,
           TChannelTests,
           TAlgorithmsTests,
-          TComparerTests
+          TComparerTests,
+          TTestQueuesAndStacks
         ])
         .Run
     );

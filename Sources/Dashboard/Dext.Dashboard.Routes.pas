@@ -4,13 +4,13 @@ interface
 
 uses
   System.SysUtils,
-  System.Generics.Collections, // TObjectList - usado com TMonitor, TODO: migrar
   Dext.Collections,
   Dext.Collections.Dict,
   System.Classes,
   System.IOUtils,
   System.DateUtils,
-  System.JSON,
+  Dext.Json,
+  Dext.Json.Types,
   System.Types,
   Dext.DI.Interfaces,
   Dext.Dashboard.TestScanner,
@@ -53,7 +53,7 @@ type
   end;
 
 var
-  FHttpHistory: TObjectList<THttpHistoryItem>;
+  FHttpHistory: IList<THttpHistoryItem>;
 
 implementation
 
@@ -211,9 +211,9 @@ begin
     procedure(Ctx: IHttpContext)
     var
       Res: IResult;
-      Arr: TJSONArray;
+      Arr: IDextJsonArray;
       Item: THttpHistoryItem;
-      Obj: TJSONObject;
+      Obj: IDextJsonObject;
     begin
       if FHttpHistory = nil then
       begin
@@ -222,29 +222,28 @@ begin
         Exit;
       end;
 
-      Arr := TJSONArray.Create;
-      TMonitor.Enter(FHttpHistory);
+      Arr := TDextJson.Provider.CreateArray;
+      TMonitor.Enter(TObject(FHttpHistory));
       try
         for Item in FHttpHistory do
         begin
-          Obj := TJSONObject.Create;
-          Obj.AddPair('id', Item.Id);
-          Obj.AddPair('method', Item.Method);
-          Obj.AddPair('url', Item.Url);
-          Obj.AddPair('statusCode', Item.StatusCode);
-          Obj.AddPair('durationMs', Item.DurationMs);
-          Obj.AddPair('timestamp', DateToISO8601(Item.Timestamp));
+          Obj := TDextJson.Provider.CreateObject;
+          Obj.SetString('id', Item.Id);
+          Obj.SetString('method', Item.Method);
+          Obj.SetString('url', Item.Url);
+          Obj.SetInteger('statusCode', Item.StatusCode);
+          Obj.SetInt64('durationMs', Item.DurationMs);
+          Obj.SetString('timestamp', DateToISO8601(Item.Timestamp));
           // Don't send full content to list to save bandwidth, maybe logic to fetch detail later?
           // For now send it, text is small.
-          Obj.AddPair('content', Item.Content);
+          Obj.SetString('content', Item.Content);
           Arr.Add(Obj);
         end;
       finally
-        TMonitor.Exit(FHttpHistory);
+        TMonitor.Exit(TObject(FHttpHistory));
       end;
       
-      Res := Results.Json(Arr.ToString);
-      Arr.Free;
+      Res := Results.Json(Arr.ToJson);
       Res.Execute(Ctx);
     end);
     
@@ -293,8 +292,8 @@ begin
       ScanPath: string;
       Entries: TArray<string>;
       Entry: string;
-      Arr: TJSONArray;
-      Obj: TJSONObject;
+      Arr: IDextJsonArray;
+      Obj: IDextJsonObject;
       Res: IResult;
     begin
       ScanPath := Ctx.Request.Query.Values['path'];
@@ -304,36 +303,32 @@ begin
         ScanPath := ScanPath.Substring(0, Length(ScanPath)-1);
       
       try
-        Arr := TJSONArray.Create;
-        try
-           if TDirectory.Exists(ScanPath) then
-           begin
-               Entries := TDirectory.GetDirectories(ScanPath);
-               for Entry in Entries do
-               begin
-                  Obj := TJSONObject.Create;
-                  Obj.AddPair('name', TPath.GetFileName(Entry));
-                  Obj.AddPair('type', 'dir');
-                  Arr.Add(Obj);
-               end;
-               
-               Entries := TDirectory.GetFiles(ScanPath);
-               for Entry in Entries do
-               begin
-                  Obj := TJSONObject.Create;
-                  Obj.AddPair('name', TPath.GetFileName(Entry));
-                  Obj.AddPair('type', 'file');
-                  Arr.Add(Obj);
-               end;
-           end;
-           
-           Res := Results.Json(Arr.ToString);
-           Res.Execute(Ctx);
-        finally
-           Arr.Free;
+        Arr := TDextJson.Provider.CreateArray;
+        if TDirectory.Exists(ScanPath) then
+        begin
+          Entries := TDirectory.GetDirectories(ScanPath);
+          for Entry in Entries do
+          begin
+            Obj := TDextJson.Provider.CreateObject;
+            Obj.SetString('name', TPath.GetFileName(Entry));
+            Obj.SetString('type', 'dir');
+            Arr.Add(Obj);
+          end;
+          
+          Entries := TDirectory.GetFiles(ScanPath);
+          for Entry in Entries do
+          begin
+            Obj := TDextJson.Provider.CreateObject;
+            Obj.SetString('name', TPath.GetFileName(Entry));
+            Obj.SetString('type', 'file');
+            Arr.Add(Obj);
+          end;
         end;
+        
+        Res := Results.Json(Arr.ToJson);
+        Res.Execute(Ctx);
       except
-         on E: Exception do Results.BadRequest(E.Message).Execute(Ctx);
+        on E: Exception do Results.BadRequest(E.Message).Execute(Ctx);
       end;
     end);
 
@@ -364,10 +359,10 @@ begin
     procedure(Ctx: IHttpContext)
     var
        ScanPath: string;
-       Json: TJSONObject;
-       Projects, Tests, HttpFiles, Docs: TJSONArray;
+       Projects, Tests, HttpFiles, Docs: IDextJsonArray;
        Files: TArray<string>;
        F: string;
+       FinalObj: IDextJsonObject;
        Res: IResult;
     begin
        ScanPath := Ctx.Request.Query.Values['path'];
@@ -377,11 +372,10 @@ begin
           Exit;
        end;
        
-       Json := TJSONObject.Create;
-       Projects := TJSONArray.Create;
-       Tests := TJSONArray.Create;
-       HttpFiles := TJSONArray.Create;
-       Docs := TJSONArray.Create;
+       Projects := TDextJson.Provider.CreateArray;
+       Tests := TDextJson.Provider.CreateArray;
+       HttpFiles := TDextJson.Provider.CreateArray;
+       Docs := TDextJson.Provider.CreateArray;
        
        try
           if TDirectory.Exists(ScanPath) then
@@ -396,8 +390,8 @@ begin
                  var Name := TPath.GetFileNameWithoutExtension(F);
                  // Avoid duplicates if dproj already found
                  var Found := False;
-                 for var I := 0 to Projects.Count - 1 do
-                   if Projects.Items[I].Value.Equals(Name) then
+                 for var I := 0 to Projects.GetCount - 1 do
+                   if Projects.GetString(I).Equals(Name) then
                    begin
                      Found := True;
                      Break;
@@ -419,8 +413,8 @@ begin
                  var Name := TPath.GetFileNameWithoutExtension(F);
                  // Avoid duplicates
                  var Found := False;
-                 for var I := 0 to Tests.Count - 1 do
-                   if (Tests.Items[I] is TJSONObject) and (Tests.Items[I] as TJSONObject).GetValue('name').Value.Equals(Name) then
+                 for var I := 0 to Tests.GetCount - 1 do
+                   if (Tests.GetNode(I).GetNodeType = jntObject) and Tests.GetObject(I).GetString('name').Equals(Name) then
                    begin
                      Found := True;
                      Break;
@@ -428,23 +422,23 @@ begin
                  
                  if not Found then 
                  begin
-                   var TestObj := TJSONObject.Create;
-                   TestObj.AddPair('name', Name);
-                   TestObj.AddPair('path', F);
+                   var TestObj := TDextJson.Provider.CreateObject;
+                   TestObj.SetString('name', Name);
+                   TestObj.SetString('path', F);
                    Tests.Add(TestObj);
                  end;
               end;
           end;
           
-          Json.AddPair('projects', Projects);
-          Json.AddPair('tests', Tests);
-          Json.AddPair('httpFiles', HttpFiles);
-          Json.AddPair('docs', Docs);
+          FinalObj := TDextJson.Provider.CreateObject;
+          FinalObj.SetArray('projects', Projects);
+          FinalObj.SetArray('tests', Tests);
+          FinalObj.SetArray('httpFiles', HttpFiles);
+          FinalObj.SetArray('docs', Docs);
           
-          Res := Results.Json(Json.ToString);
+          Res := Results.Json(FinalObj.ToJson);
           Res.Execute(Ctx);
        finally
-          Json.Free;
        end;
     end);
 
@@ -458,56 +452,50 @@ begin
        Fixture: TTestFixtureInfo;
        Method: TTestMethodInfo;
        
-       ResJson, FixtureObj, MethodObj: TJSONObject;
-       FixturesArr, MethodsArr: TJSONArray;
+       ResJson, FixtureObj, MethodObj: IDextJsonObject;
+       FixturesArr, MethodsArr: IDextJsonArray;
        Res: IResult;
     begin
        ProjectPath := Ctx.Request.Query.Values['project'];
-       // If only name provided, try to find in current workspace (context needed, assuming full path for now or scan)
-       // For simple validaton, assume User passes full path or relative to known root.
-       // But better: Receive Full Path from the UI which already knows it from previous scan.
        
        if (ProjectPath = '') or not FileExists(ProjectPath) then
        begin
-          // Fallback: try to find in last scanned folder? Too complex for now.
           Results.BadRequest('Valid project path required').Execute(Ctx);
           Exit;
        end;
        
        try
          ProjectInfo := TTestScanner.ScanProject(ProjectPath);
-         ResJson := nil;
          try
-            ResJson := TJSONObject.Create;
-            ResJson.AddPair('project', TPath.GetFileNameWithoutExtension(ProjectPath));
-            ResJson.AddPair('path', ProjectPath);
+            ResJson := TDextJson.Provider.CreateObject;
+            ResJson.SetString('project', TPath.GetFileNameWithoutExtension(ProjectPath));
+            ResJson.SetString('path', ProjectPath);
             
-            FixturesArr := TJSONArray.Create;
+            FixturesArr := TDextJson.Provider.CreateArray;
             for Fixture in ProjectInfo.Fixtures do
             begin
-                FixtureObj := TJSONObject.Create;
-                FixtureObj.AddPair('name', Fixture.Name);
-                FixtureObj.AddPair('unit', Fixture.UnitName);
-                FixtureObj.AddPair('line', TJSONNumber.Create(Fixture.LineNumber));
+                FixtureObj := TDextJson.Provider.CreateObject;
+                FixtureObj.SetString('name', Fixture.Name);
+                FixtureObj.SetString('unit', Fixture.UnitName);
+                FixtureObj.SetInteger('line', Fixture.LineNumber);
                 
-                MethodsArr := TJSONArray.Create;
+                MethodsArr := TDextJson.Provider.CreateArray;
                 for Method in Fixture.Methods do
                 begin
-                    MethodObj := TJSONObject.Create;
-                    MethodObj.AddPair('name', Method.Name);
-                    MethodObj.AddPair('line', TJSONNumber.Create(Method.LineNumber));
+                    MethodObj := TDextJson.Provider.CreateObject;
+                    MethodObj.SetString('name', Method.Name);
+                    MethodObj.SetInteger('line', Method.LineNumber);
                     MethodsArr.Add(MethodObj);
                 end;
-                FixtureObj.AddPair('tests', MethodsArr);
+                FixtureObj.SetArray('tests', MethodsArr);
                 
                 FixturesArr.Add(FixtureObj);
             end;
-            ResJson.AddPair('fixtures', FixturesArr);
+            ResJson.SetArray('fixtures', FixturesArr);
             
-            Res := Results.Json(ResJson.ToString);
+            Res := Results.Json(ResJson.ToJson);
             Res.Execute(Ctx);
          finally
-            ResJson.Free;
             ProjectInfo.Free;
          end;
        except
@@ -520,50 +508,49 @@ begin
     procedure(Ctx: IHttpContext)
     var
       Config: TDextGlobalConfig;
-      Json, EnvObj: TJSONObject;
-      Arr, PlatArr: TJSONArray;
+      Json, EnvObj: IDextJsonObject;
+      Arr, PlatArr: IDextJsonArray;
       Res: IResult;
       Env: TDextEnvironment;
       P: string;
       CovPath: string;
     begin
       Config := TDextGlobalConfig.Create;
-      Json := TJSONObject.Create;
       try
         Config.Load;
+        Json := TDextJson.Provider.CreateObject;
         
-        Json.AddPair('dextPath', Config.DextPath);
-        if Config.DextPath.IsEmpty then Json.AddPair('dextPath', ParamStr(0));
+        Json.SetString('dextPath', Config.DextPath);
+        if Config.DextPath.IsEmpty then Json.SetString('dextPath', ParamStr(0));
         
         CovPath := Config.CoveragePath;
         if (CovPath = '') then
            CovPath := TCodeCoverageTool.FindPath(Config, 'Win32');
 
-        Json.AddPair('coveragePath', CovPath);
-        Json.AddPair('configPath', TPath.Combine(TPath.Combine(TPath.GetHomePath, '.dext'), 'config.yaml'));
+        Json.SetString('coveragePath', CovPath);
+        Json.SetString('configPath', TPath.Combine(TPath.Combine(TPath.GetHomePath, '.dext'), 'config.yaml'));
         
-        Arr := TJSONArray.Create;
+        Arr := TDextJson.Provider.CreateArray;
         for Env in Config.Environments do
         begin
-          EnvObj := TJSONObject.Create;
-          EnvObj.AddPair('version', Env.Version);
-          EnvObj.AddPair('name', Env.Name);
-          EnvObj.AddPair('path', Env.Path);
-          EnvObj.AddPair('isDefault', TJSONBool.Create(Env.IsDefault));
+          EnvObj := TDextJson.Provider.CreateObject;
+          EnvObj.SetString('version', Env.Version);
+          EnvObj.SetString('name', Env.Name);
+          EnvObj.SetString('path', Env.Path);
+          EnvObj.SetBoolean('isDefault', Env.IsDefault);
           
-          PlatArr := TJSONArray.Create;
+          PlatArr := TDextJson.Provider.CreateArray;
           for P in Env.Platforms do
             PlatArr.Add(P);
-          EnvObj.AddPair('platforms', PlatArr);
+          EnvObj.SetArray('platforms', PlatArr);
           
           Arr.Add(EnvObj);
         end;
-        Json.AddPair('environments', Arr);
+        Json.SetArray('environments', Arr);
         
-        Res := Results.Text(Json.ToString, 200);
+        Res := Results.Json(Json.ToJson);
         Res.Execute(Ctx);
       finally
-        Json.Free;
         Config.Free;
       end;
     end);
@@ -575,32 +562,36 @@ begin
       Body: string;
       Res: IResult;
       SR: TStreamReader;
-      Json: TJSONObject;
+      Node: IDextJsonNode;
+      Json: IDextJsonObject;
       Config: TDextGlobalConfig;
     begin
       SR := TStreamReader.Create(Ctx.Request.Body);
       try
          Body := SR.ReadToEnd;
-         Json := TJSONObject.ParseJSONValue(Body) as TJSONObject;
-         if Json <> nil then
          try
-            Config := TDextGlobalConfig.Create;
-            try
-              Config.Load;
-              if Json.TryGetValue('dextPath', Body) then Config.DextPath := Body;
-              if Json.TryGetValue('coveragePath', Body) then Config.CoveragePath := Body;
-              Config.Save;
-              
-              Res := Results.Ok('{"status":"saved"}');
-            finally
-              Config.Free;
-            end;
-         finally
-           Json.Free;
-         end
-         else
-           Res := Results.BadRequest('Invalid JSON');
-           
+           Node := TDextJson.Provider.Parse(Body);
+           if (Node <> nil) and (Node.GetNodeType = jntObject) then
+           begin
+              Json := Node as IDextJsonObject;
+              Config := TDextGlobalConfig.Create;
+              try
+                Config.Load;
+                if Json.Contains('dextPath') then Config.DextPath := Json.GetString('dextPath');
+                if Json.Contains('coveragePath') then Config.CoveragePath := Json.GetString('coveragePath');
+                Config.Save;
+                
+                Res := Results.Ok('{"status":"saved"}');
+              finally
+                Config.Free;
+              end;
+           end
+           else
+             Res := Results.BadRequest('Invalid JSON or not an object');
+         except
+           on E: Exception do Res := Results.BadRequest('Invalid JSON: ' + E.Message);
+         end;
+            
          Res.Execute(Ctx);
       finally
          SR.Free;
@@ -651,7 +642,8 @@ begin
       Body, Ver: string;
       Res: IResult;
       SR: TStreamReader;
-      Json: TJSONObject;
+      Node: IDextJsonNode;
+      Json: IDextJsonObject;
       Config: TDextGlobalConfig;
       I: Integer;
       Updated: Boolean;
@@ -661,35 +653,44 @@ begin
       SR := TStreamReader.Create(Ctx.Request.Body);
       try
          Body := SR.ReadToEnd;
-         Json := TJSONObject.ParseJSONValue(Body) as TJSONObject;
-         if (Json <> nil) and Json.TryGetValue('version', Ver) then
          try
-            Config := TDextGlobalConfig.Create;
-            try
-              Config.Load;
-              Updated := False;
-              for I := 0 to Config.Environments.Count - 1 do
+           Node := TDextJson.Provider.Parse(Body);
+           if (Node <> nil) and (Node.GetNodeType = jntObject) then
+           begin
+              Json := Node as IDextJsonObject;
+              if Json.Contains('version') then
               begin
-                 E := Config.Environments[I];
-                 NewState := (E.Version = Ver);
-                 if E.IsDefault <> NewState then
-                 begin
-                    E.IsDefault := NewState;
-                    Config.Environments[I] := E; 
-                    Updated := True;
-                 end;
-              end;
-              
-              if Updated then Config.Save;
-              Res := Results.Ok('{"status":"updated"}');
-            finally
-              Config.Free;
-            end;
-         finally
-           Json.Free;
-         end
-         else
-           Res := Results.BadRequest('Invalid Request');
+                Ver := Json.GetString('version');
+                Config := TDextGlobalConfig.Create;
+                try
+                  Config.Load;
+                  Updated := False;
+                  for I := 0 to Config.Environments.Count - 1 do
+                  begin
+                     E := Config.Environments[I];
+                     NewState := (E.Version = Ver);
+                     if E.IsDefault <> NewState then
+                     begin
+                        E.IsDefault := NewState;
+                        Config.Environments[I] := E; 
+                        Updated := True;
+                     end;
+                  end;
+                  
+                  if Updated then Config.Save;
+                  Res := Results.Ok('{"status":"updated"}');
+                finally
+                  Config.Free;
+                end;
+              end
+              else
+                Res := Results.BadRequest('Missing version field');
+           end
+           else
+             Res := Results.BadRequest('Invalid JSON');
+         except
+           on E: Exception do Res := Results.BadRequest('Invalid JSON: ' + E.Message);
+         end;
          Res.Execute(Ctx);
       finally
          SR.Free;
@@ -703,64 +704,64 @@ begin
       Body: string;
       Res: IResult;
       SR: TStreamReader;
-      Json, ResJson: TJSONObject;
+      Node: IDextJsonNode;
+      Json, ResJson, ReqObj, VarObj: IDextJsonObject;
       Collection: THttpRequestCollection;
-      ReqArr, VarArr: TJSONArray;
-      ReqObj, VarObj: TJSONObject;
+      ReqArr, VarArr: IDextJsonArray;
       I: Integer;
     begin
       SR := TStreamReader.Create(Ctx.Request.Body);
       try
         Body := SR.ReadToEnd;
-        Json := TJSONObject.ParseJSONValue(Body) as TJSONObject;
-        if (Json <> nil) then
         try
-          if Json.TryGetValue('content', Body) then
+          Node := TDextJson.Provider.Parse(Body);
+          if (Node <> nil) and (Node.GetNodeType = jntObject) then
           begin
-            Collection := THttpRequestParser.Parse(Body);
-            try
-              ResJson := TJSONObject.Create;
+            Json := Node as IDextJsonObject;
+            if Json.Contains('content') then
+            begin
+              Body := Json.GetString('content');
+              Collection := THttpRequestParser.Parse(Body);
               try
-                ReqArr := TJSONArray.Create;
+                ResJson := TDextJson.Provider.CreateObject;
+                ReqArr := TDextJson.Provider.CreateArray;
                 for I := 0 to Collection.Requests.Count - 1 do
                 begin
-                  ReqObj := TJSONObject.Create;
-                  ReqObj.AddPair('name', Collection.Requests[I].Name);
-                  ReqObj.AddPair('method', Collection.Requests[I].Method);
-                  ReqObj.AddPair('url', Collection.Requests[I].Url);
-                  ReqObj.AddPair('lineNumber', TJSONNumber.Create(Collection.Requests[I].LineNumber));
-                  ReqObj.AddPair('body', Collection.Requests[I].Body);
+                  ReqObj := TDextJson.Provider.CreateObject;
+                  ReqObj.SetString('name', Collection.Requests[I].Name);
+                  ReqObj.SetString('method', Collection.Requests[I].Method);
+                  ReqObj.SetString('url', Collection.Requests[I].Url);
+                  ReqObj.SetInteger('lineNumber', Collection.Requests[I].LineNumber);
+                  ReqObj.SetString('body', Collection.Requests[I].Body);
                   ReqArr.Add(ReqObj);
                 end;
-                ResJson.AddPair('requests', ReqArr);
+                ResJson.SetArray('requests', ReqArr);
                 
-                VarArr := TJSONArray.Create;
+                VarArr := TDextJson.Provider.CreateArray;
                 for I := 0 to Collection.Variables.Count - 1 do
                 begin
-                  VarObj := TJSONObject.Create;
-                  VarObj.AddPair('name', Collection.Variables[I].Name);
-                  VarObj.AddPair('value', Collection.Variables[I].Value);
-                  VarObj.AddPair('isEnvVar', TJSONBool.Create(Collection.Variables[I].IsEnvVar));
-                  VarObj.AddPair('envVarName', Collection.Variables[I].EnvVarName);
+                  VarObj := TDextJson.Provider.CreateObject;
+                  VarObj.SetString('name', Collection.Variables[I].Name);
+                  VarObj.SetString('value', Collection.Variables[I].Value);
+                  VarObj.SetBoolean('isEnvVar', Collection.Variables[I].IsEnvVar);
+                  VarObj.SetString('envVarName', Collection.Variables[I].EnvVarName);
                   VarArr.Add(VarObj);
                 end;
-                ResJson.AddPair('variables', VarArr);
+                ResJson.SetArray('variables', VarArr);
                 
-                Res := Results.Text(ResJson.ToString, 200);
+                Res := Results.Json(ResJson.ToJson);
               finally
-                ResJson.Free;
+                Collection.Free;
               end;
-            finally
-              Collection.Free;
-            end;
+            end
+            else
+              Res := Results.BadRequest('Missing content field');
           end
           else
-            Res := Results.BadRequest('Missing content field');
-        finally
-          Json.Free;
-        end
-        else
-          Res := Results.BadRequest('Invalid JSON');
+            Res := Results.BadRequest('Invalid JSON');
+        except
+          on E: Exception do Res := Results.BadRequest('Invalid JSON: ' + E.Message);
+        end;
         Res.Execute(Ctx);
       finally
         SR.Free;
@@ -774,7 +775,8 @@ begin
       Body: string;
       Collection: THttpRequestCollection;
       ExResult: THttpExecutionResult;
-      Json, ResJson, HeadersObj: TJSONObject;
+      Node: IDextJsonNode;
+      Json, ResJson, HeadersObj: IDextJsonObject;
       RequestIndex: Integer;
       Res: IResult;
       SR: TStreamReader;
@@ -782,46 +784,48 @@ begin
       SR := TStreamReader.Create(Ctx.Request.Body);
       try
         Body := SR.ReadToEnd;
-        Json := TJSONObject.ParseJSONValue(Body) as TJSONObject;
-        if (Json <> nil) then
         try
-          RequestIndex := 0;
-          Json.TryGetValue('requestIndex', RequestIndex);
-          
-          if Json.TryGetValue('content', Body) then
+          Node := TDextJson.Provider.Parse(Body);
+          if (Node <> nil) and (Node.GetNodeType = jntObject) then
           begin
-            Collection := THttpRequestParser.Parse(Body);
-            try
-              if (RequestIndex >= 0) and (RequestIndex < Collection.Requests.Count) then
-              begin
-                ExResult := THttpExecutor.ExecuteSync(Collection.Requests[RequestIndex], Collection.Variables);
-                
-                ResJson := TJSONObject.Create;
-                try
-                  ResJson.AddPair('requestName', ExResult.RequestName);
-                  ResJson.AddPair('requestMethod', ExResult.RequestMethod);
-                  ResJson.AddPair('requestUrl', ExResult.RequestUrl);
-                  ResJson.AddPair('statusCode', TJSONNumber.Create(ExResult.StatusCode));
-                  ResJson.AddPair('statusText', ExResult.StatusText);
-                  ResJson.AddPair('responseBody', ExResult.ResponseBody);
-                  ResJson.AddPair('durationMs', TJSONNumber.Create(ExResult.DurationMs));
-                  ResJson.AddPair('success', TJSONBool.Create(ExResult.Success));
-                  ResJson.AddPair('errorMessage', ExResult.ErrorMessage);
+            Json := Node as IDextJsonObject;
+            RequestIndex := 0;
+            if Json.Contains('requestIndex') then RequestIndex := Json.GetInteger('requestIndex');
+            
+            if Json.Contains('content') then
+            begin
+              Body := Json.GetString('content');
+              Collection := THttpRequestParser.Parse(Body);
+              try
+                if (RequestIndex >= 0) and (RequestIndex < Collection.Requests.Count) then
+                begin
+                  ExResult := THttpExecutor.ExecuteSync(Collection.Requests[RequestIndex], Collection.Variables);
                   
-                  HeadersObj := TJSONObject.Create;
+                  ResJson := TDextJson.Provider.CreateObject;
+                  ResJson.SetString('requestName', ExResult.RequestName);
+                  ResJson.SetString('requestMethod', ExResult.RequestMethod);
+                  ResJson.SetString('requestUrl', ExResult.RequestUrl);
+                  ResJson.SetInteger('statusCode', ExResult.StatusCode);
+                  ResJson.SetString('statusText', ExResult.StatusText);
+                  ResJson.SetString('responseBody', ExResult.ResponseBody);
+                  ResJson.SetInt64('durationMs', ExResult.DurationMs);
+                  ResJson.SetBoolean('success', ExResult.Success);
+                  ResJson.SetString('errorMessage', ExResult.ErrorMessage);
+                  
+                  HeadersObj := TDextJson.Provider.CreateObject;
                   if ExResult.ResponseHeaders <> nil then
                     for var HdrKey in ExResult.ResponseHeaders.Keys do
-                      HeadersObj.AddPair(HdrKey, ExResult.ResponseHeaders[HdrKey]);
-                  ResJson.AddPair('responseHeaders', HeadersObj);
+                      HeadersObj.SetString(HdrKey, ExResult.ResponseHeaders[HdrKey]);
+                  ResJson.SetObject('responseHeaders', HeadersObj);
                   
-                  Res := Results.Text(ResJson.ToString, 200);
+                  Res := Results.Json(ResJson.ToJson);
                   Res.Execute(Ctx);
                   
                   // Save to History
                   if FHttpHistory = nil then
-                     FHttpHistory := TObjectList<THttpHistoryItem>.Create(True);
+                     FHttpHistory := TCollections.CreateList<THttpHistoryItem>(True);
                   
-                  TMonitor.Enter(FHttpHistory);
+                  TMonitor.Enter(TObject(FHttpHistory));
                   try
                     var HistoryItem := THttpHistoryItem.Create;
                     HistoryItem.Id := TGUID.NewGuid.ToString;
@@ -838,26 +842,23 @@ begin
                     while FHttpHistory.Count > 50 do
                       FHttpHistory.Delete(FHttpHistory.Count - 1);
                   finally
-                    TMonitor.Exit(FHttpHistory);
+                    TMonitor.Exit(TObject(FHttpHistory));
                   end;
-                finally
-                  ResJson.Free;
-                end;
-              end
-              else
-                Res := Results.BadRequest('Invalid request index');
-            finally
-              Collection.Free;
-            end;
+                end
+                else
+                  Results.BadRequest('Invalid request index').Execute(Ctx);
+              finally
+                Collection.Free;
+              end;
+            end
+            else
+              Results.BadRequest('Missing content field').Execute(Ctx);
           end
           else
-            Res := Results.BadRequest('Missing content field');
-        finally
-          Json.Free;
-        end
-        else
-          Res := Results.BadRequest('Invalid JSON');
-        Res.Execute(Ctx);
+            Results.BadRequest('Invalid JSON').Execute(Ctx);
+        except
+          on E: Exception do Results.BadRequest('Invalid JSON: ' + E.Message).Execute(Ctx);
+        end;
       finally
         SR.Free;
       end;
@@ -868,15 +869,16 @@ begin
     procedure(Ctx: IHttpContext)
     var
       Body: string;
+      EventType: string;
+      JO: IDextJsonObject;
+      Node: IDextJsonNode;
       SR: TStreamReader;
+      SseEvent: string;
     begin
       // Read logs
       SR := TStreamReader.Create(Ctx.Request.Body);
       try
         Body := SR.ReadToEnd;
-        
-
-
         if Body.IsEmpty then
         begin
           Ctx.Response.StatusCode := 204; // No Content
@@ -884,32 +886,25 @@ begin
         end;
 
         // ADAPTER: Telemetry to Dashboard
-        // Only SSE (Server-Sent Events) is used as IHubContext is not registered.
-             
-        // PROCESS LOGS ALWAYS (Parsing JSON)
-        var JV: TJSONValue := TJSONObject.ParseJSONValue(Body);
         try
-           if (JV <> nil) and (JV is TJSONObject) then
-           begin
-               var JO := JV as TJSONObject;
-               var Val: string;
-               var EventType := '';
-               if JO.TryGetValue('event', Val) then EventType := Val;
-                    
-               // SSE Adapter (Primary Channel)
-               var SseEvent := '';
-               if EventType = 'RunStart' then SseEvent := 'run_start'
-               else if EventType = 'TestStart' then SseEvent := 'test_start'
-               else if EventType = 'TestComplete' then SseEvent := 'test_complete'
-               else if EventType = 'RunComplete' then SseEvent := 'run_complete';
-               
-               if SseEvent <> '' then
-               begin
-                    BroadcastSSE(SseEvent, JO.ToString);
-               end;
-           end;
-        finally
-           JV.Free;
+          Node := TDextJson.Provider.Parse(Body);
+          if (Node <> nil) and (Node.GetNodeType = jntObject) then
+          begin
+            JO := Node as IDextJsonObject;
+            EventType := '';
+            if JO.Contains('event') then EventType := JO.GetString('event');
+                 
+            SseEvent := '';
+            if EventType = 'RunStart' then SseEvent := 'run_start'
+            else if EventType = 'TestStart' then SseEvent := 'test_start'
+            else if EventType = 'TestComplete' then SseEvent := 'test_complete'
+            else if EventType = 'RunComplete' then SseEvent := 'run_complete';
+            
+            if SseEvent <> '' then
+                 BroadcastSSE(SseEvent, JO.ToJson);
+          end;
+        except
+          // Log parsing error but don't fail the request (telemetry ingestion often just accepts)
         end;
         
         Ctx.Response.StatusCode := 202; // Accepted
@@ -923,7 +918,9 @@ begin
     procedure(Ctx: IHttpContext)
     var
        Body: string;
-       Json, TestRunResult: TJSONObject;
+       Node: IDextJsonNode;
+       Json: IDextJsonObject;
+       TestRunResult: IDextJsonObject;
        Project: string;
        SR: TStreamReader;
     begin
@@ -933,41 +930,31 @@ begin
        finally
          SR.Free;
        end;
-
+ 
        try
-         Json := TJSONObject.ParseJSONValue(Body) as TJSONObject;
-         if Json = nil then
+         Node := TDextJson.Provider.Parse(Body);
+         if (Node = nil) or (Node.GetNodeType <> jntObject) then
          begin
             Results.BadRequest('Invalid JSON').Execute(Ctx);
             Exit;
          end;
          
-         try
-           if not Json.TryGetValue<string>('project', Project) then
-           begin
-              Results.BadRequest('Missing "project" field').Execute(Ctx);
-              Exit;
-           end;
-           
-           TestRunResult := TTestRunner.RunProject(Project);
-           if TestRunResult <> nil then
-           begin
-              try
-                Results.Json(TestRunResult.ToString).Execute(Ctx);
-              finally
-                TestRunResult.Free;
-              end;
-           end
-           else
-           begin
-              // If nil is returned, it means FindExecutable failed or similar handled error in RunProject
-              // But currently RunProject returns a JSON with "error" field on failure.
-              // So nil means unexpected.
-              Results.InternalServerError('Failed to run tests (Result is nil)').Execute(Ctx);
-           end;
-              
-         finally
-           Json.Free;
+         Json := Node as IDextJsonObject;
+         if not Json.Contains('project') then
+         begin
+            Results.BadRequest('Missing "project" field').Execute(Ctx);
+            Exit;
+         end;
+         
+         Project := Json.GetString('project');
+         TestRunResult := TTestRunner.RunProject(Project);
+         if TestRunResult <> nil then
+         begin
+            Results.Json(TestRunResult.ToJson).Execute(Ctx);
+         end
+         else
+         begin
+            Results.InternalServerError('Failed to run tests (Result is nil)').Execute(Ctx);
          end;
        except
           on E: Exception do
@@ -1075,13 +1062,13 @@ begin
 end;
 
 initialization
-  FHttpHistory := TObjectList<THttpHistoryItem>.Create(True);
+  FHttpHistory := TCollections.CreateList<THttpHistoryItem>(True);
   FSSEClients := TCollections.CreateList<IHttpContext>;
   FLock := TObject.Create;
 
 finalization
   FLock.Free;
-  FHttpHistory.Free;
+  // FHttpHistory is ARC managed
 
 
 end.

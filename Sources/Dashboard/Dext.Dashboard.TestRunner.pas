@@ -6,7 +6,8 @@ uses
   System.SysUtils,
   System.Classes,
   System.IOUtils,
-  System.JSON,
+  Dext.Json,
+  Dext.Json.Types,
   WinApi.Windows,
   WinApi.ShellAPI;
 
@@ -17,7 +18,7 @@ type
     class function ExecuteProcess(const AExePath, AParams: string): Boolean;
 
   public
-    class function RunProject(const AProjectPath: string): TJSONObject;
+    class function RunProject(const AProjectPath: string): IDextJsonObject;
   end;
 
 implementation
@@ -83,23 +84,19 @@ begin
 
 end;
 
-class function TTestRunner.RunProject(const AProjectPath: string): TJSONObject;
+class function TTestRunner.RunProject(const AProjectPath: string): IDextJsonObject;
 var
   ExePath: string;
   ResultsFile: string;
 begin
   ExePath := FindExecutable(AProjectPath);
 
-  
   if ExePath = '' then
   begin
-
-    Result := TJSONObject.Create;
-    Result.AddPair('error', 'Test executable not found. Please build the project first.');
+    Result := TDextJson.Provider.CreateObject;
+    Result.SetString('error', 'Test executable not found. Please build the project first.');
     Exit;
   end;
-  
-
   
   // Delete previous results...
   ResultsFile := TPath.Combine(TPath.GetDirectoryName(ExePath), 'test-results.json');
@@ -108,16 +105,14 @@ begin
   // Launch Async
   if ExecuteProcess(ExePath, '-no-wait') then
   begin
-
-      Result := TJSONObject.Create;
-      Result.AddPair('status', 'started');
-      Result.AddPair('message', 'Tests are running in background. Check dashboard for real-time progress.');
+      Result := TDextJson.Provider.CreateObject;
+      Result.SetString('status', 'started');
+      Result.SetString('message', 'Tests are running in background. Check dashboard for real-time progress.');
   end
   else
   begin
-
-      Result := TJSONObject.Create;
-      Result.AddPair('error', 'Failed to execute test process.');
+      Result := TDextJson.Provider.CreateObject;
+      Result.SetString('error', 'Failed to execute test process.');
   end;
 end;
 

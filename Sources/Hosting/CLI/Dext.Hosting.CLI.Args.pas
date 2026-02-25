@@ -6,7 +6,8 @@ uses
   System.Classes,
   System.SysUtils,
   Dext.Collections,
-  Dext.Collections.Dict;
+  Dext.Collections.Dict,
+  Dext.Collections.HashSet;
 
 type
   TCommandLineArgs = class;
@@ -26,7 +27,7 @@ type
   private
     FCommand: string;
     FArguments: IDictionary<string, string>;
-    FFlags: IList<string>;
+    FFlags: IHashSet<string>;
     FValues: IList<string>;
     FRawArgs: TArray<string>; // Remaining arguments (after command)
     
@@ -73,7 +74,7 @@ implementation
 constructor TCommandLineArgs.Create;
 begin
   FArguments := TCollections.CreateDictionary<string, string>;
-  FFlags := TCollections.CreateList<string>;
+  FFlags := TCollections.CreateHashSet<string>;
   FValues := TCollections.CreateList<string>;
 end;
 

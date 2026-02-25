@@ -1,4 +1,4 @@
-{***************************************************************************}
+﻿{***************************************************************************}
 {                                                                           }
 {           Dext Framework                                                  }
 {                                                                           }
@@ -41,7 +41,7 @@ uses
 type
   /// <summary>Collection notification type (compatible with RTL enum values)</summary>
   TCollectionNotification = (cnAdded, cnRemoved, cnExtracted);
-
+  
   {$M+}
   IList<T> = interface(IEnumerable<T>)
     ['{8877539D-3522-488B-933B-8C4581177699}']
@@ -86,6 +86,48 @@ type
     procedure ForEach(const Action: TProc<T>);
     procedure Sort(const AComparer: IComparer<T> = nil);
     function ToArray: TArray<T>;
+  end;
+
+  /// <summary>Generic Stack (LIFO) interface</summary>
+  IStack<T> = interface(IEnumerable<T>)
+    ['{7A8B9C0D-1E2F-3A4B-5C6D-7E8F9A0B1C2D}']
+    function GetCount: Integer;
+    procedure Push(const Value: T);
+    function Pop: T;
+    function Peek: T;
+    function TryPop(out Value: T): Boolean;
+    function TryPeek(out Value: T): Boolean;
+    procedure Clear;
+    function Contains(const Value: T): Boolean;
+    function ToArray: TArray<T>;
+    property Count: Integer read GetCount;
+  end;
+
+  /// <summary>Generic Queue (FIFO) interface</summary>
+  IQueue<T> = interface(IEnumerable<T>)
+    ['{AD1F2E3D-4C5B-6A7B-8C9D-0E1F2A3B4C5D}']
+    function GetCount: Integer;
+    procedure Enqueue(const Value: T);
+    function Dequeue: T;
+    function Peek: T;
+    function TryDequeue(out Value: T): Boolean;
+    function TryPeek(out Value: T): Boolean;
+    procedure Clear;
+    function Contains(const Value: T): Boolean;
+    function ToArray: TArray<T>;
+    property Count: Integer read GetCount;
+  end;
+
+  /// <summary>Generic HashSet interface</summary>
+  IHashSet<T> = interface(IEnumerable<T>)
+    ['{6B7C8D9E-0F1A-2B3C-4D5E-6F7A8B9C0D1E}']
+    function GetCount: Integer;
+    function Add(const Value: T): Boolean;
+    function Remove(const Value: T): Boolean;
+    procedure Clear;
+    function Contains(const Value: T): Boolean;
+    function ToArray: TArray<T>;
+    property Count: Integer read GetCount;
   end;
 
   /// <summary>Enumerator backed by TRawList</summary>
@@ -174,13 +216,20 @@ type
     class function CreateObjectList<T: class>(OwnsObjects: Boolean = False): IList<T>; static;
     class function CreateDictionary<K, V>(ACapacity: Integer = 0): IDictionary<K, V>; overload; static;
     class function CreateDictionary<K, V>(AOwnsValues: Boolean; ACapacity: Integer = 0): IDictionary<K, V>; overload; static;
+
+    class function CreateStack<T>: IStack<T>; static;
+    class function CreateQueue<T>: IQueue<T>; static;
+    class function CreateHashSet<T>: IHashSet<T>; static;
   end;
   {$M-}
 
 implementation
 
 uses
-  Dext.Collections.Memory;
+  Dext.Collections.Memory,
+  Dext.Collections.Stack,
+  Dext.Collections.Queue,
+  Dext.Collections.HashSet;
 
 { TEnumerator<T> }
 
@@ -611,6 +660,21 @@ end;
 class function TCollections.CreateDictionary<K, V>(AOwnsValues: Boolean; ACapacity: Integer): IDictionary<K, V>;
 begin
   Result := TDictionary<K, V>.Create(AOwnsValues, ACapacity);
+end;
+
+class function TCollections.CreateStack<T>: IStack<T>;
+begin
+  Result := TStack<T>.Create;
+end;
+
+class function TCollections.CreateQueue<T>: IQueue<T>;
+begin
+  Result := TQueue<T>.Create;
+end;
+
+class function TCollections.CreateHashSet<T>: IHashSet<T>;
+begin
+  Result := THashSet<T>.Create;
 end;
 
 end.

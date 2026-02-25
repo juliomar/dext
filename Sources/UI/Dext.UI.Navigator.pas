@@ -40,10 +40,10 @@ interface
 
 uses
   System.Classes,
-  System.Generics.Collections, // para TStack - TODO: migrar para Dext.Collections.Stack
   System.Rtti,
   System.SysUtils,
   Dext.Collections,
+  Dext.Collections.Stack,
   Dext.Collections.Dict,
   Dext.DI.Interfaces,
   Dext.UI.Navigator.Types,
@@ -91,7 +91,7 @@ type
     FAdapter: INavigatorAdapter;
     FMiddlewares: IList<INavigationMiddleware>;
     FRoutes: IDictionary<string, TRouteInfo>;
-    FHistory: TStack<THistoryEntry>;
+    FHistory: IStack<THistoryEntry>;
     FServiceProvider: IServiceProvider;
     FOnNavigating: TProc<TNavigationContext>;
     FOnNavigated: TProc<TNavigationContext>;
@@ -206,7 +206,7 @@ begin
   inherited Create;
   FMiddlewares := TCollections.CreateList<INavigationMiddleware>(True);
   FRoutes := TCollections.CreateDictionary<string, TRouteInfo>;
-  FHistory := TStack<THistoryEntry>.Create;
+  FHistory := TCollections.CreateStack<THistoryEntry>;
 end;
 
 constructor TNavigator.Create(const AServiceProvider: IServiceProvider);
@@ -227,7 +227,7 @@ begin
       Entry.Params.Free;
   end;
   
-  FHistory.Free;
+  // FHistory is ARC managed
   // FRoutes is ARC
   inherited;
 end;

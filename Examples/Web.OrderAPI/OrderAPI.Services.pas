@@ -9,7 +9,6 @@ interface
 
 uses
   System.SysUtils,
-  System.Generics.Collections,
   Dext.Entity,
   Dext.Collections,
   OrderAPI.Entities,

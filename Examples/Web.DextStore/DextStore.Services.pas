@@ -4,7 +4,7 @@ interface
 
 uses
   System.SysUtils,
-  System.Generics.Collections,
+  Dext.Collections,
   System.SyncObjs,
   DextStore.Models;
 
@@ -22,7 +22,7 @@ type
 
   TProductService = class(TInterfacedObject, IProductService)
   private
-    FProducts: TObjectList<TProduct>;
+    FProducts: IList<TProduct>;
     FLock: TCriticalSection;
     FNextId: Integer;
   public
@@ -49,7 +49,7 @@ type
   TCartService = class(TInterfacedObject, ICartService)
   private
     // Map UserId -> List of Items
-    FCarts: TObjectDictionary<string, TObjectList<TCartItem>>;
+    FCarts: IDictionary<string, IList<TCartItem>>;
     FLock: TCriticalSection;
     FProductService: IProductService;
   public
@@ -73,7 +73,7 @@ type
 
   TOrderService = class(TInterfacedObject, IOrderService)
   private
-    FOrders: TObjectList<TOrder>;
+    FOrders: IList<TOrder>;
     FLock: TCriticalSection;
     FCartService: ICartService;
     FNextId: Integer;
@@ -91,7 +91,7 @@ implementation
 
 constructor TProductService.Create;
 begin
-  FProducts := TObjectList<TProduct>.Create;
+  FProducts := TCollections.CreateList<TProduct>(True);
   FLock := TCriticalSection.Create;
   FNextId := 1;
   
@@ -115,7 +115,7 @@ end;
 
 destructor TProductService.Destroy;
 begin
-  FProducts.Free;
+  FProducts := nil; // Interface handles cleanup
   FLock.Free;
   inherited;
 end;
@@ -181,14 +181,14 @@ end;
 
 constructor TCartService.Create(ProductService: IProductService);
 begin
-  FCarts := TObjectDictionary<string, TObjectList<TCartItem>>.Create([doOwnsValues]);
+  FCarts := TCollections.CreateDictionary<string, IList<TCartItem>>;
   FLock := TCriticalSection.Create;
   FProductService := ProductService;
 end;
 
 destructor TCartService.Destroy;
 begin
-  FCarts.Free;
+  FCarts := nil;
   FLock.Free;
   inherited;
 end;
@@ -205,7 +205,7 @@ begin
       raise Exception.Create('Insufficient stock');
 
     if not FCarts.ContainsKey(UserId) then
-      FCarts.Add(UserId, TObjectList<TCartItem>.Create);
+      FCarts.Add(UserId, TCollections.CreateList<TCartItem>(True));
       
     var Cart := FCarts[UserId];
     var Found := False;
@@ -277,7 +277,7 @@ end;
 
 constructor TOrderService.Create(CartService: ICartService);
 begin
-  FOrders := TObjectList<TOrder>.Create;
+  FOrders := TCollections.CreateList<TOrder>(True);
   FLock := TCriticalSection.Create;
   FCartService := CartService;
   FNextId := 1000;
@@ -285,7 +285,7 @@ end;
 
 destructor TOrderService.Destroy;
 begin
-  FOrders.Free;
+  FOrders := nil;
   FLock.Free;
   inherited;
 end;
@@ -310,7 +310,7 @@ begin
     // In a real app, you would create OrderItems entities
     // Here we just reference them but we need to be careful because CartService clears the cart
     // So we should deep copy. For this demo, we'll just create new objects.
-    var OrderItems := TList<TCartItem>.Create;
+    var OrderItems := TCollections.CreateList<TCartItem>(True);
     for var Item in Items do
     begin
       var NewItem := TCartItem.Create;
@@ -321,7 +321,7 @@ begin
       OrderItems.Add(NewItem);
     end;
     Order.Items := OrderItems.ToArray;
-    OrderItems.Free; // The array holds references, but TOrder should own them? 
+    OrderItems := nil; // Cleanup
     // Wait, TArray<T> is just an array. TOrder needs to manage lifecycle if it owns them.
     // For simplicity in this demo, we assume TOrder will free them or we leak slightly for the sake of brevity.
     // Ideally TOrder should use TObjectList<TCartItem>.
@@ -340,14 +340,14 @@ function TOrderService.GetUserOrders(const UserId: string): TArray<TOrder>;
 begin
   FLock.Enter;
   try
-    var List := TList<TOrder>.Create;
+    var List := TCollections.CreateList<TOrder>;
     try
       for var Order in FOrders do
         if Order.UserId = UserId then
           List.Add(Order);
       Result := List.ToArray;
     finally
-      List.Free;
+      List := nil;
     end;
   finally
     FLock.Leave;

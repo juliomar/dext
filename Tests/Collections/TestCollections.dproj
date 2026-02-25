@@ -111,6 +111,9 @@
         <DCCReference Include="TestCollections.Vector.pas"/>
         <DCCReference Include="TestCollections.Concurrent.pas"/>
         <DCCReference Include="TestCollections.Channels.pas"/>
+        <DCCReference Include="TestCollections.Algorithms.pas"/>
+        <DCCReference Include="TestCollections.Comparers.pas"/>
+        <DCCReference Include="TestCollections.QueuesAndStacks.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

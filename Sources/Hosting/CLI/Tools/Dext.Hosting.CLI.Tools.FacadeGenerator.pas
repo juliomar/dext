@@ -8,19 +8,19 @@ uses
   System.Math,
   System.StrUtils,
   System.SysUtils,
-  System.Generics.Collections, // THashSet, TObjectList - TODO: migrar para Dext.Collections
-  System.Generics.Defaults,
   Dext.Collections,
+  Dext.Collections.HashSet,
+  Dext.Collections.Comparers,
   DelphiAST.Classes,
   DelphiAST.Consts,
   DelphiAST,
   Dext.Utils;
 
 type
-  TOrdinalIgnoreCaseComparer = class(System.Generics.Defaults.TEqualityComparer<string>)
+  TOrdinalIgnoreCaseComparer = class(TInterfacedObject, IEqualityComparer<string>)
   public
-    function Equals(const Left, Right: string): Boolean; override;
-    function GetHashCode(const Value: string): Integer; override;
+    function Equals(const Left, Right: string): Boolean; reintroduce;
+    function GetHashCode(const Value: string): Integer; reintroduce;
   end;
 
   TExtractedUnit = class
@@ -43,9 +43,9 @@ type
   protected
     FSourcePath: string;
     FSearchPattern: string;
-    FExcludedUnits: THashSet<string>;
-    FParsedUnits: TObjectList<TExtractedUnit>;
-    FGlobalTypeNames: THashSet<string>; 
+    FExcludedUnits: IHashSet<string>;
+    FParsedUnits: IList<TExtractedUnit>;
+    FGlobalTypeNames: IHashSet<string>; 
     
     // Configuration
     FStartAliasTag: string;
@@ -65,7 +65,7 @@ type
     function IsGeneric(Node: TSyntaxNode): Boolean;
     function GetUnitName(Root: TSyntaxNode; const FileName: string): string;
   public
-    property ParsedUnits: TObjectList<TExtractedUnit> read FParsedUnits;
+    property ParsedUnits: IList<TExtractedUnit> read FParsedUnits;
     constructor Create(const SourcePath, Wildcard: string; const Excluded: TArray<string>);
     destructor Destroy; override;
     procedure Execute; virtual;
@@ -92,7 +92,7 @@ end;
 
 function TOrdinalIgnoreCaseComparer.GetHashCode(const Value: string): Integer;
 begin
-  Result := System.Generics.Defaults.TEqualityComparer<string>.Default.GetHashCode(UpperCase(Value));
+  Result := TEqualityComparer<string>.Default.GetHashCode(UpperCase(Value));
 end;
 
 { TExtractedUnit }
@@ -118,12 +118,12 @@ var
 begin
   FSourcePath := SourcePath;
   FSearchPattern := Wildcard;
-  FExcludedUnits := THashSet<string>.Create(TOrdinalIgnoreCaseComparer.Create);
-  FGlobalTypeNames := THashSet<string>.Create(TOrdinalIgnoreCaseComparer.Create); 
+  FExcludedUnits := TCollections.CreateHashSet<string>;
+  FGlobalTypeNames := TCollections.CreateHashSet<string>; 
   for S in Excluded do
     FExcludedUnits.Add(S);
     
-  FParsedUnits := TObjectList<TExtractedUnit>.Create(True);
+  FParsedUnits := TCollections.CreateList<TExtractedUnit>(True);
   FSkippedUnits := TCollections.CreateList<string>;
   FProcessedUnits := 0;
   
@@ -140,9 +140,7 @@ end;
 
 destructor TFacadeGenerator.Destroy;
 begin
-  FParsedUnits.Free;
-  FExcludedUnits.Free;
-  FGlobalTypeNames.Free;
+  // All collections are ARC managed
   inherited;
 end;
 

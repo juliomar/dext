@@ -38,9 +38,9 @@ uses
   System.Rtti,
   System.SyncObjs,
   System.SysUtils,
-  System.Generics.Collections, // para TQueue - TODO: implementar no Dext.Collections e REMOVER URGENTE!
   Dext.Auth.Identity,
   Dext.Collections,
+  Dext.Collections.Queue,
   Dext.Collections.Dict,
   Dext.Threading.CancellationToken,
   Dext.Web.Hubs.Connections,
@@ -57,7 +57,7 @@ type
     FConnectionId: string;
     FState: TConnectionState;
     FItems: IDictionary<string, TValue>;
-    FMessageQueue: TQueue<string>;
+    FMessageQueue: IQueue<string>;
     FQueueLock: TCriticalSection;
     FClosed: Int64; // 0 = open, 1 = closed (using Integer for TInterlocked)
   public
@@ -156,7 +156,7 @@ begin
   FConnectionId := AConnectionId;
   FState := csConnecting;
   FItems := TCollections.CreateDictionary<string, TValue>;
-  FMessageQueue := TQueue<string>.Create;
+  FMessageQueue := TCollections.CreateQueue<string>;
   FQueueLock := TCriticalSection.Create;
   FClosed := 0;
 end;
@@ -164,7 +164,7 @@ end;
 destructor TSSEConnection.Destroy;
 begin
   FQueueLock.Free;
-  FMessageQueue.Free;
+  // FMessageQueue is ARC managed
   // FItems is ARC
   inherited;
 end;

@@ -27,7 +27,7 @@ package Dext.Core;
 {$ENDIF IMPLICITBUILDING}
 {$DESCRIPTION 'Dext Framework - Core & Infrastructure'}
 {$RUNONLY}
-{$IMPLICITBUILD ON}
+{$IMPLICITBUILD OFF}
 
 requires
   rtl,
@@ -116,7 +116,11 @@ contains
   Dext.Telemetry.Context in 'Core\Dext.Telemetry.Context.pas',
   Dext.Collections.Comparers in 'Core\Dext.Collections.Comparers.pas',
   Dext.Collections.Base in 'Core\Dext.Collections.Base.pas',
-  Dext.Collections.Frozen in 'Core\Dext.Collections.Frozen.pas';
+  Dext.Collections.Frozen in 'Core\Dext.Collections.Frozen.pas',
+  Dext.Collections.HashSet in 'Core\Dext.Collections.HashSet.pas',
+  Dext.Collections.Queue in 'Core\Dext.Collections.Queue.pas',
+  Dext.Collections.Stack in 'Core\Dext.Collections.Stack.pas',
+  Dext.Collections.Interfaces in 'Core\Dext.Collections.Interfaces.pas';
 
 end.
 

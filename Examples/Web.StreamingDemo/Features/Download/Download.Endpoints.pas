@@ -3,7 +3,7 @@ unit Download.Endpoints;
 interface
 
 uses
-  System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
+  System.SysUtils, System.Classes, System.JSON, Dext.Collections,
   Dext.Web, Dext.Json,
   Download.Service;
 
@@ -23,13 +23,13 @@ begin
   App.MapGet<IDownloadService, IHttpContext>('/download/list',
     procedure(Service: IDownloadService; Ctx: IHttpContext)
     var
-      List: TList<TFileInfo>;
+      List: IList<TFileInfo>;
     begin
       List := Service.ListFiles;
       try
-        Ctx.Response.Json(TDextJson.Serialize<TList<TFileInfo>>(List));
+        Ctx.Response.Json(TDextJson.Serialize<IList<TFileInfo>>(List));
       finally
-        List.Free;
+        List := nil;
       end;
     end);
 

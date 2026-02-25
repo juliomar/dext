@@ -3,7 +3,7 @@ unit Download.Service;
 interface
 
 uses
-  System.SysUtils, System.Classes, System.IOUtils, System.Generics.Collections;
+  System.SysUtils, System.Classes, System.IOUtils, Dext.Collections;
 
 type
   TFileInfo = record
@@ -15,7 +15,7 @@ type
   IDownloadService = interface
     ['{D7F2A6C4-B1E2-4D9A-8F7E-3C5A6B7D8E9F}']
     function GetFile(const FileName: string): TStream;
-    function ListFiles: TList<TFileInfo>;
+    function ListFiles: IList<TFileInfo>;
     function GetMimeType(const FileName: string): string;
   end;
 
@@ -25,7 +25,7 @@ type
   public
     constructor Create;
     function GetFile(const FileName: string): TStream;
-    function ListFiles: TList<TFileInfo>;
+    function ListFiles: IList<TFileInfo>;
     function GetMimeType(const FileName: string): string;
   end;
 
@@ -51,14 +51,14 @@ begin
   Result := TFileStream.Create(FilePath, fmOpenRead or fmShareDenyWrite);
 end;
 
-function TDownloadService.ListFiles: TList<TFileInfo>;
+function TDownloadService.ListFiles: IList<TFileInfo>;
 var
   Files: TArray<string>;
   F: string;
   Info: TFileInfo;
   Attr: TSearchRec;
 begin
-  Result := TList<TFileInfo>.Create;
+  Result := TCollections.CreateList<TFileInfo>;
   Files := TDirectory.GetFiles(FUploadDir);
   for F in Files do
   begin
