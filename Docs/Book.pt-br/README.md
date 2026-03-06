@@ -31,7 +31,7 @@
 - [Middleware](02-framework-web/middleware.md) - Pipeline de requisições
 - [Adapter WebBroker](02-framework-web/webbroker.md) ⭐ **NOVO** - Deploy como ISAPI/CGI no IIS/Apache
 
-#### [3. Autenticação & Segurança](03-autenticacao/README.md)
+#### [3. Autenticação](03-autenticacao/README.md)
 
 - [Autenticação JWT](03-autenticacao/jwt-auth.md) - Auth baseada em tokens
 - [Claims Builder](03-autenticacao/claims-builder.md) - Claims de usuário
@@ -117,7 +117,10 @@
 
 ## Exemplos
 
-Cada capítulo referencia exemplos funcionais do diretório `Examples/`:
+Cada capítulo referencia exemplos funcionais do diretório `Examples/`
+---
+
+### Capítulo 1. Introdução e Filosofia
 
 | Exemplo | Tópicos |
 |---------|---------|

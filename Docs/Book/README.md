@@ -9,6 +9,9 @@
 - [Getting Started](01-getting-started/README.md) - Installation & Hello World
 - [Web Framework](02-web-framework/README.md) - Minimal APIs & Controllers
 - [ORM](05-orm/README.md) - Database access & queries
+- [Security](11-security/README.md) - Authentication & Authorization
+- [Deployment](12-deployment/README.md) - Publishing your application
+- [AI Assistants & Skills](13-ai-assistants/README.md) - Integrating AI capabilities
 
 ---
 
