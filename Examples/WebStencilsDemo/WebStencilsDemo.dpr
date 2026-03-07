@@ -28,8 +28,6 @@ begin
     Writeln('📦 Setting up database...');
     TStartup.SeedData(Provider);
 
-    Writeln('🚀 Server starting on http://localhost:5000');
-    
     // Run the application
     App.Run(5000);
   except

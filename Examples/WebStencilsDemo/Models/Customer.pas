@@ -13,31 +13,13 @@ type
     FId: IntType;
     FName: StringType;
     FEmail: StringType;
-    function GetEmail: StringType;
-    function GetId: IntType;
-    function GetName: StringType;
   public
     [PK, AutoInc]
-    property Id: IntType read GetId write FId;
-    property Name: StringType read GetName write FName;
-    property Email: StringType read GetEmail write FEmail;
+    property Id: IntType read FId write FId;
+    property Name: StringType read FName write FName;
+    property Email: StringType read FEmail write FEmail;
   end;
 
 implementation
-
-function TCustomer.GetEmail: StringType;
-begin
-  Result := FEmail;
-end;
-
-function TCustomer.GetId: IntType;
-begin
-  Result := FId;
-end;
-
-function TCustomer.GetName: StringType;
-begin
-  Result := FName;
-end;
 
 end.

@@ -26,7 +26,7 @@ uses
   Dext.Web;              // Web HELPERS LAST
 
 type
-  TMyDbContext = class(TDbContext)
+  TAppDbContext = class(TDbContext)
   private
     function GetCustomers: IDbSet<TCustomer>;
   public
@@ -35,7 +35,6 @@ type
   end;
 
   TSearchDTO = record
-    [FromQuery('SearchTerm')]
     SearchTerm: string;
   end;
 
@@ -48,16 +47,16 @@ type
 
 implementation
 
-{ TMyDbContext }
+{ TAppDbContext }
 
-constructor TMyDbContext.Create;
+constructor TAppDbContext.Create;
 begin
   // Initialize with nil as the container will provide the real options if needed, 
   // but for TDbContext it's required by the framework constraints.
   inherited Create(nil, nil, nil);
 end;
 
-function TMyDbContext.GetCustomers: IDbSet<TCustomer>;
+function TAppDbContext.GetCustomers: IDbSet<TCustomer>;
 begin
   Result := Entities<TCustomer>;
 end;
@@ -67,7 +66,7 @@ end;
 procedure TStartup.ConfigureServices(const Services: TDextServices; const Configuration: IConfiguration);
 begin
   Services
-    .AddDbContext<TMyDbContext>(
+    .AddDbContext<TAppDbContext>(
       procedure(Opts: TDbContextOptions)
       begin
         Opts.UseSqlite('webstencils-customers.db');
@@ -95,13 +94,13 @@ begin
       begin
         Result := Results.View('index');
       end)
-    .MapGet<TMyDbContext, IResult>('/customers',
-      function(Db: TMyDbContext): IResult
+    .MapGet<TAppDbContext, IResult>('/customers',
+      function(Db: TAppDbContext): IResult
       begin
         Result := Results.View<TCustomer>('customers', Db.Customers.QueryAll);
       end)
-    .MapGet<TMyDbContext, TSearchDTO, IResult>('/customers/search',
-      function(Db: TMyDbContext; Query: TSearchDTO): IResult
+    .MapGet<TAppDbContext, TSearchDTO, IResult>('/customers/search',
+      function(Db: TAppDbContext; Query: TSearchDTO): IResult
       begin
         var c := Prototype.Entity<TCustomer>;
         Result := Results.View<TCustomer>('customers_list',
@@ -112,7 +111,7 @@ end;
 
 class procedure TStartup.SeedData(const Services: IServiceProvider);
 var
-  DB: TMyDbContext;
+  DB: TAppDbContext;
 
   procedure AddCustomer(const Name, Email: string);
   begin
@@ -124,7 +123,7 @@ var
 
 begin
   // Using explicit type cast to resolve GetService ambiguity in some Delphi versions
-  DB := Services.GetService(TMyDbContext) as TMyDbContext;
+  DB := Services.GetService(TAppDbContext) as TAppDbContext;
   if DB = nil then Exit;
   
   DB.EnsureCreated;
