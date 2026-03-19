@@ -1,4 +1,4 @@
-unit Dext.Entity.DataSet;
+﻿unit Dext.Entity.DataSet;
 
 interface
 
@@ -666,9 +666,11 @@ begin
     if FVirtualIndex.Count = 0 then
       FCurrentRec := -1
     else
-      FCurrentRec := TargetIdx - 1;
-
-    // NOTA: NÃO chamamos Resync([]); aqui. O TDataSet base já gerencia esse evento 
+    if TargetIdx <= FVirtualIndex.Count then
+      FCurrentRec := TargetIdx
+    else
+      FCurrentRec := FVirtualIndex.Count;
+    // NOTA: NÃO chamamos Resync([]); aqui. O TDataSet base já gerencia esse evento
     // logo após o InternalDelete, garantindo que o cursor pare no registro correto.
   end;
 end;
@@ -805,13 +807,11 @@ end;
 procedure TEntityDataSet.InternalFirst;
 begin
   FCurrentRec := -1;
-  Resync([]);
 end;
 
 procedure TEntityDataSet.InternalLast;
 begin
-  FCurrentRec := FVirtualIndex.Count - 1;
-  Resync([]);
+  FCurrentRec := FVirtualIndex.Count;
 end;
 
 procedure TEntityDataSet.InternalInitFieldDefs;
