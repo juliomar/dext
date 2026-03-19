@@ -1,4 +1,4 @@
-﻿unit Dext.Entity.DataSet.Tests;
+unit Dext.Entity.DataSet.Tests;
 
 interface
 
@@ -728,12 +728,10 @@ begin
   FDataSet.FieldByName('Name').AsString := 'Romero';
   FDataSet.Post;
 
-  WriteLn('[Debug Test 1/6] Should(FDataSet.RecordCount).Be(2), FDataSet.RecordCount = ', FDataSet.RecordCount);
   Should(FDataSet.RecordCount).Be(2);
 
   // Navegar para o Record 3
   FDataSet.Last;
-  WriteLn('[Debug Test 2/6] FDataSet.FieldByName(''Id'').AsInteger).Be(3), FDataSet.FieldByName(''Id'').AsInteger = ', FDataSet.FieldByName('Id').AsInteger);
   Should(FDataSet.FieldByName('Id').AsInteger).Be(3);
 
   // Inserir entre Record 1 e Record 3
@@ -742,18 +740,14 @@ begin
   FDataSet.FieldByName('Name').AsString := 'Meio';
   FDataSet.Post;
 
-  WriteLn('[Debug Test 3/6] Should(FDataSet.RecordCount).Be(3), FDataSet.RecordCount = ', FDataSet.RecordCount);
   Should(FDataSet.RecordCount).Be(3);
 
   // VERIFICAR ORDEM (Deve ser 1, 2, 3)
   FDataSet.First;
-  WriteLn('[Debug Test 4/6]');
   Should(FDataSet.FieldByName('Id').AsInteger).Be(1).Because('Primeiro deve ser Cesar (Id=1)');
   FDataSet.Next;
-  WriteLn('[Debug Test 5/6]');
   Should(FDataSet.FieldByName('Id').AsInteger).Be(2).Because('Segundo deve ser o novo (Id=2) e não o Romero');
   FDataSet.Next;
-  WriteLn('[Debug Test 6/6]');
   Should(FDataSet.FieldByName('Id').AsInteger).Be(3).Because('Terceiro deve ser Romero (Id=3)');
 end;
 

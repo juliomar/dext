@@ -55,7 +55,7 @@ type
     FIsCursorOpen: Boolean;
     FInsertObj: TObject; // Temporary object for uncommitted dsInsert
     FIsAppending: Boolean;
-    FInsertPosition: Integer;
+    FPositionBeforeAction: Integer;
     
     procedure SetItems(const Value: IList<TObject>);
     procedure SetIndexFieldNames(const Value: string);
@@ -111,7 +111,10 @@ type
     procedure InternalInsert; override;
     procedure InternalFirst; override;
     procedure InternalLast; override;
+    procedure DoBeforeScroll; override;
+    procedure DoAfterScroll; override;
     procedure DoBeforeInsert; override;
+    procedure DoBeforeDelete; override;
 
   private
     function CreateNewEntity: TObject;
@@ -199,7 +202,7 @@ begin
   FHeaderSize := SizeOf(TEntityRecordHeader);
   FReadOnly := False;
   BookmarkSize := SizeOf(Integer);
-  FInsertPosition := -2;
+  FPositionBeforeAction := -2;
 end;
 
 destructor TEntityDataSet.Destroy;
@@ -636,29 +639,37 @@ end;
 
 procedure TEntityDataSet.InternalDelete;
 var
+  TargetIdx: Integer;
   ActualRow: Integer;
-  Header: PEntityRecordHeader;
 begin
-  if (Pointer(ActiveBuffer) <> nil) and Assigned(FItems) then
+  if not Assigned(FItems) then Exit;
+
+  // 1. Usar exclusivamente a posição capturada no DoBeforeDelete (GetRecNo é 1-based)
+  TargetIdx := FPositionBeforeAction - 1; 
+
+  if (TargetIdx >= 0) and (TargetIdx < FVirtualIndex.Count) then
   begin
-    Header := PEntityRecordHeader(ActiveBuffer);
-    if (Header.BookmarkIndex >= 0) and (Header.BookmarkIndex < FVirtualIndex.Count) then
-    begin
-      // 1. Identificar o índice real na lista física
-      ActualRow := FVirtualIndex[Header.BookmarkIndex];
-      
-      // 2. Remover da lista virtual primeiro
-      FVirtualIndex.RemoveAt(Header.BookmarkIndex);
-      
-      // 3. Remover da lista física (referência real)
-      // Se formos donos da lista, o TList.Delete lidará com a liberação do objeto
-      // se configurado (embora aqui usemos TList<TObject>, geralmente o usuário libera)
-      FItems.Delete(ActualRow);
-      
-      // 4. IMPORTANTE: Como os índices físicos mudaram, PRECISAMOS reconstruir a visão virtual
-      ApplyFilterAndSort;
-      Resync([]);
-    end;
+    // 2. Identificar o índice real na lista física
+    ActualRow := FVirtualIndex[TargetIdx];
+    
+    // 3. Remover das listas
+    FVirtualIndex.RemoveAt(TargetIdx);
+    FItems.Delete(ActualRow);
+    
+    // 4. Reconstruir a visão virtual (necessário se houver filtros ou sorteio ativos)
+    ApplyFilterAndSort;
+
+    // 5. Estratégia de Reposicionamento para o Delphi TDataSet:
+    // O TDataSet executa UpdateCursorPos e Resync nativamente após o InternalDelete.
+    // Setando FCurrentRec em TargetIdx - 1, o framework fará o Next para TargetIdx.
+    // Como os registros subiram para ocupar a vaga deletada, o sucessor agora é o novo TargetIdx.
+    if FVirtualIndex.Count = 0 then
+      FCurrentRec := -1
+    else
+      FCurrentRec := TargetIdx - 1;
+
+    // NOTA: NÃO chamamos Resync([]); aqui. O TDataSet base já gerencia esse evento 
+    // logo após o InternalDelete, garantindo que o cursor pare no registro correto.
   end;
 end;
 
@@ -666,7 +677,7 @@ procedure TEntityDataSet.InternalPost;
 var
   NewIdx: Integer;
   TargetIdx: Integer;
-  LPos: Integer;
+  TargetPos: Integer;
 begin
   if State = dsInsert then
   begin
@@ -680,17 +691,17 @@ begin
       end
       else
       begin
-        // Se FInsertPosition veio do RecNo (1-based), ajustamos para 0-based
-        // Se RecNo era 0 (vazio), LPos fica -1. Se era 1, LPos fica 0.
-        LPos := FInsertPosition - 1;
+        // Se FPositionBeforeAction veio do RecNo (1-based), ajustamos para 0-based
+        // Se RecNo era 0 (vazio), TargetPos fica -1. Se era 1, TargetPos fica 0.
+        TargetPos := FPositionBeforeAction - 1;
 
-        if (LPos < 0) or (FVirtualIndex.Count = 0) then
+        if (TargetPos < 0) or (FVirtualIndex.Count = 0) then
           TargetIdx := 0
-        else if (LPos >= FVirtualIndex.Count) then
+        else if (TargetPos >= FVirtualIndex.Count) then
           TargetIdx := FItems.Count
         else
           // No Insert, usamos o índice físico apontado pela visão virtual na posição guardada no DoBeforeInsert
-          TargetIdx := FVirtualIndex[LPos];
+          TargetIdx := FVirtualIndex[TargetPos];
 
         if TargetIdx >= FItems.Count then
         begin
@@ -706,7 +717,7 @@ begin
 
       FInsertObj := nil; 
       FIsAppending := False; 
-      FInsertPosition := -2;
+      FPositionBeforeAction := -2;
 
       // 2. Atualizar a visão virtual
       ApplyFilterAndSort;
@@ -714,8 +725,7 @@ begin
       // 3. Posicionar o cursor no novo item
       FCurrentRec := FVirtualIndex.IndexOf(NewIdx);
 
-      // 4. Notificar mudança e sincronizar buffers
-      Resync([]);
+      // 4. Notificar mudança
       DataEvent(deDataSetChange, 0);
     end;
   end
@@ -741,10 +751,26 @@ begin
   // No-op.
 end;
 
+procedure TEntityDataSet.DoBeforeScroll;
+begin
+  inherited DoBeforeScroll;
+end;
+
+procedure TEntityDataSet.DoAfterScroll;
+begin
+  inherited DoAfterScroll;
+end;
+
 procedure TEntityDataSet.DoBeforeInsert;
 begin
-  FInsertPosition := GetRecNo;
+  FPositionBeforeAction := GetRecNo;
   inherited DoBeforeInsert;
+end;
+
+procedure TEntityDataSet.DoBeforeDelete;
+begin
+  FPositionBeforeAction := GetRecNo;
+  inherited DoBeforeDelete;
 end;
 
 procedure TEntityDataSet.InternalInsert;
@@ -779,14 +805,13 @@ end;
 procedure TEntityDataSet.InternalFirst;
 begin
   FCurrentRec := -1;
+  Resync([]);
 end;
 
 procedure TEntityDataSet.InternalLast;
 begin
-  if RecordCount > 0 then
-    FCurrentRec := RecordCount - 1
-  else
-    FCurrentRec := -1;
+  FCurrentRec := FVirtualIndex.Count - 1;
+  Resync([]);
 end;
 
 procedure TEntityDataSet.InternalInitFieldDefs;
@@ -1026,9 +1051,10 @@ end;
 function TEntityDataSet.GetRecNo: Integer;
 begin
   CheckActive;
-  Result := -1;
   if Pointer(ActiveBuffer) <> nil then
-    Result := PEntityRecordHeader(Pointer(ActiveBuffer)).BookmarkIndex + 1;
+    Result := PEntityRecordHeader(Pointer(ActiveBuffer)).BookmarkIndex + 1
+  else
+    Result := FCurrentRec + 1;
 end;
 
 procedure TEntityDataSet.SetRecNo(Value: Integer);
@@ -1132,27 +1158,22 @@ begin
   if not Active then Exit;
   Header := PEntityRecordHeader(ActiveBuffer);
 
-  // 1. Identificar o objeto de destino — Prioridade absoluta ao cabeçalho do buffer ativo (essencial para Grid painting)
+  // 1. Identificar o objeto de destino — PRIORIDADE ABSOLUTA à pintura do buffer ativo (Grid)
   CurrentObj := nil;
   
   if (Header <> nil) then
   begin
     if (Header.BookmarkIndex = -2) then
-    begin
-      // Suporte a novo registro sendo inserido (phantom index -2)
-      if (State = dsInsert) and (FInsertObj <> nil) then
-        CurrentObj := FInsertObj;
-    end
+      CurrentObj := FInsertObj
     else if (Header.BookmarkIndex >= 0) and (Header.BookmarkIndex < FVirtualIndex.Count) then
-    begin
-      // Registro existente via index no header do buffer sendo lido
       CurrentObj := FItems[FVirtualIndex[Header.BookmarkIndex]];
-    end;
   end;
 
-  // 2. Fallback para cursor global apenas se não houver buffer ativo ou índice no buffer (menos comum em browse/paint)
+  // 2. Fallback para cursor global (leitura programática Field.Value ou navegação fora do loop de pintura)
   if (CurrentObj = nil) and (FCurrentRec >= 0) and (FCurrentRec < FVirtualIndex.Count) then
-    CurrentObj := FItems[FVirtualIndex[FCurrentRec]];
+  begin
+     CurrentObj := FItems[FVirtualIndex[FCurrentRec]];
+  end;
 
   if (CurrentObj = nil) or (FEntityMap = nil) then Exit;
 
