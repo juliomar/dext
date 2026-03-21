@@ -119,6 +119,24 @@ type
   end;
 
   // =========================================================================
+  //  Shadow Property Entity
+  // =========================================================================
+  TShadowUser = class
+  private
+    FId: Integer;
+    FName: string;
+  public
+    [PrimaryKey]
+    property Id: Integer read FId write FId;
+    property Name: string read FName write FName;
+  end;
+
+  TShadowTestContext = class(TDbContext)
+  protected
+    procedure OnModelCreating(Builder: TModelBuilder); override;
+  end;
+
+  // =========================================================================
   //  Fixtures
   // =========================================================================
 
@@ -254,6 +272,23 @@ type
     procedure Test_Read_Nullable_Empty;
     [Test]
     procedure Test_Read_Lazy_Value;
+  end;
+
+  [TestFixture('TEntityDataSet Shadow Properties')]
+  TShadowDataSetTests = class
+  private
+    FContext: TShadowTestContext;
+    FDataSet: TEntityDataSet;
+  public
+    [Setup]
+    procedure Setup;
+    [TearDown]
+    procedure TearDown;
+
+    [Test]
+    procedure Test_ShadowProperty_Read_From_Context;
+    [Test]
+    procedure Test_ShadowProperty_Write_Updates_Context;
   end;
 
 implementation
@@ -675,6 +710,75 @@ begin
     end;
   finally
     Product.Free;
+  end;
+end;
+
+{ TShadowTestContext }
+
+procedure TShadowTestContext.OnModelCreating(Builder: TModelBuilder);
+begin
+  Builder.Entity<TShadowUser>.ShadowProperty('CreatedBy');
+end;
+
+{ TShadowDataSetTests }
+
+procedure TShadowDataSetTests.Setup;
+begin
+  FContext := TShadowTestContext.Create(nil, nil, nil); 
+  FDataSet := TEntityDataSet.Create(nil);
+  FDataSet.DbContext := FContext;
+  FDataSet.IncludeShadowProperties := True;
+end;
+
+procedure TShadowDataSetTests.TearDown;
+begin
+  FDataSet.Free;
+  FContext.Free;
+end;
+
+procedure TShadowDataSetTests.Test_ShadowProperty_Read_From_Context;
+var
+  U: TShadowUser;
+begin
+  U := TShadowUser.Create;
+  try
+    U.Id := 1;
+    U.Name := 'Cesar';
+    
+    // Set a shadow value in the context
+    FContext.ChangeTracker.Track(U, esUnchanged);
+    FContext.Entry(U).Member('CreatedBy').SetCurrentValue('Admin');
+    
+    FDataSet.Load(TArray<TObject>.Create(U), TShadowUser);
+    FDataSet.Open;
+    
+    Should(FDataSet.FieldByName('CreatedBy').AsString).Be('Admin');
+  finally
+    U.Free;
+  end;
+end;
+
+procedure TShadowDataSetTests.Test_ShadowProperty_Write_Updates_Context;
+var
+  U: TShadowUser;
+begin
+  U := TShadowUser.Create;
+  try
+    U.Id := 1;
+    U.Name := 'Cesar';
+    FContext.ChangeTracker.Track(U, esUnchanged);
+    
+    FDataSet.Load(TArray<TObject>.Create(U), TShadowUser);
+    FDataSet.Open;
+    
+    FDataSet.Edit;
+    FDataSet.FieldByName('CreatedBy').AsString := 'Manager';
+    FDataSet.Post;
+    
+    // Verify context was updated
+    Should(FContext.Entry(U).Member('CreatedBy').GetCurrentValue.AsString).Be('Manager');
+  finally
+    U.Free;
   end;
 end;
 

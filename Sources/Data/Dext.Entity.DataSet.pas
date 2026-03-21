@@ -16,6 +16,7 @@ uses
   Dext.Collections.Dict,
   Dext.Core.Span,
   Dext.Entity.Mapping,
+  Dext.Entity.Context,
   Dext.Json.Utf8;
 
 type
@@ -38,11 +39,13 @@ type
   private
     FEntityMap: TEntityMap;
     FEntityClass: TClass;
+    FDbContext: TDbContext;
     
     // Virtual Buffers (Offsets Index)
     // Physical Objects Reference
     FItems: IList<TObject>;            // Real reference to the object list
     FOwnsItems: Boolean;               // Whether the dataset owns the list and should clear it
+    FOwnsEntityMap: Boolean;           // Whether the dataset owns the map
     FVirtualIndex: TVector<Integer>;   // Ordered/filtered view over FItems (contains indices to FItems)
     
     FRecordSize: Integer;
@@ -146,6 +149,7 @@ type
     function CreateBlobStream(Field: TField; Mode: TBlobStreamMode): TStream; override;
     function GetCurrentObject: TObject;
     property Items: IList<TObject> read FItems write SetItems;
+    property DbContext: TDbContext read FDbContext write FDbContext;
   published
     property Active;
     property Filter;
@@ -209,20 +213,30 @@ type
   end;
 
 function TValueBufferToValue(ABuffer: TValueBuffer; ADataType: TFieldType): TValue;
+var
+  S: string;
 begin
   case ADataType of
-    ftString, ftWideString:
-      Result := TValue.From<string>(TEncoding.Unicode.GetString(ABuffer));
-    ftInteger:
-      Result := TValue.From<Integer>(PInteger(ABuffer)^);
+    ftString:
+    begin
+      S := TEncoding.Default.GetString(ABuffer);
+      Result := TValue.From<string>(S.TrimRight([#0]));
+    end;
+    ftWideString, ftMemo, ftWideMemo:
+    begin
+      S := TEncoding.Unicode.GetString(ABuffer);
+      Result := TValue.From<string>(S.TrimRight([#0]));
+    end;
+    ftInteger, ftSmallint, ftAutoInc:
+      Result := TValue.From<Integer>(PInteger(@ABuffer[0])^);
     ftLargeint:
-      Result := TValue.From<Int64>(PInt64(ABuffer)^);
+      Result := TValue.From<Int64>(PInt64(@ABuffer[0])^);
     ftFloat, ftCurrency:
-      Result := TValue.From<Double>(PDouble(ABuffer)^);
+      Result := TValue.From<Double>(PDouble(@ABuffer[0])^);
     ftBoolean:
-      Result := TValue.From<Boolean>(PBoolean(ABuffer)^);
+      Result := TValue.From<Boolean>(PBoolean(@ABuffer[0])^);
     ftDateTime, ftDate, ftTime:
-      Result := TValue.From<TDateTime>(PDouble(ABuffer)^);
+      Result := TValue.From<TDateTime>(PDouble(@ABuffer[0])^);
   else
     Result := TValue.Empty;
   end;
@@ -258,7 +272,7 @@ begin
     FItems := nil; // IList cuidará da liberação se for o caso
   FItems := nil;
   
-  if Assigned(FEntityMap) then
+  if Assigned(FEntityMap) and FOwnsEntityMap then
     FEntityMap.Free;
     
   inherited Destroy;
@@ -374,8 +388,18 @@ begin
 
   if FEntityMap = nil then
   begin
-    FEntityMap := TEntityMap.Create(AClass.ClassInfo);
-    FEntityMap.DiscoverAttributes;
+    if Assigned(FDbContext) then
+    begin
+      FEntityMap := FDbContext.ModelBuilder.GetMap(AClass.ClassInfo);
+      FOwnsEntityMap := False;
+    end;
+
+    if FEntityMap = nil then
+    begin
+      FEntityMap := TEntityMap.Create(AClass.ClassInfo);
+      FEntityMap.DiscoverAttributes;
+      FOwnsEntityMap := True;
+    end;
   end;
   
   Active := True; // Chama Open -> InternalOpen e prepara buffers
@@ -1125,6 +1149,9 @@ begin
     for PropMap in FEntityMap.Properties.Values do
     begin
       if PropMap.IsIgnored or PropMap.IsNavigation then Continue;
+      
+      // Shadow property check
+      if PropMap.IsShadow and (not FIncludeShadowProperties) then Continue;
 
       // Calcular resolved type dinamicamente
       ResolvedType := PropMap.DataType;
@@ -1169,6 +1196,12 @@ begin
 
       if (PropMap.DataType = ftUnknown) and (ResolvedType <> ftUnknown) then
         PropMap.DataType := ResolvedType;
+
+      // Ensure shadow property has a type if unknown (default to string)
+      if (PropMap.IsShadow) and (ResolvedType = ftUnknown) then
+        ResolvedType := ftWideString;
+
+      if ResolvedType = ftUnknown then Continue;
 
       // 1. Popular FieldDefs para metadados
       FieldDef := FieldDefs.AddFieldDef;
@@ -1448,7 +1481,16 @@ begin
   if not FEntityMap.Properties.TryGetValue(Field.FieldName, PropMap) then
     Exit;
 
-  // 3. RTTI Fallback if field offset is not defined or represents a Smart Type / Nullable Wrapper
+  // 3. Shadow Property support
+  if PropMap.IsShadow and (FDbContext <> nil) then
+  begin
+    var Entry := FDbContext.Entry(CurrentObj);
+    Value := Entry.Member(Field.FieldName).GetCurrentValue.AsVariant;
+    Result := True;
+    Exit;
+  end;
+
+  // 4. RTTI Fallback if field offset is not defined or represents a Smart Type / Nullable Wrapper
   if (PropMap.FieldValueOffset <= 0) or 
      ((PropMap.PropertyType <> nil) and TReflection.IsSmartProp(PropMap.PropertyType)) then
   begin
@@ -1653,6 +1695,16 @@ begin
 
   if not FEntityMap.Properties.TryGetValue(Field.FieldName, PropMap) then
     Exit;
+
+  // 3. Shadow Property support
+  if PropMap.IsShadow and (FDbContext <> nil) then
+  begin
+    if P = nil then
+      FDbContext.Entry(CurrentObj).Member(Field.FieldName).SetCurrentValue(TValue.Empty)
+    else
+      FDbContext.Entry(CurrentObj).Member(Field.FieldName).SetCurrentValue(TValueBufferToValue(Buffer, Field.DataType));
+    Exit;
+  end;
 
   if PropMap.FieldValueOffset > 0 then
     PValue := Pointer(PByte(CurrentObj) + PropMap.FieldValueOffset)

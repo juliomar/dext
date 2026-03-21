@@ -234,6 +234,7 @@ type
     
     // Property Selection
     function Prop(const APropertyName: string): TEntityBuilder<T>;
+    function ShadowProperty(const APropName: string): TEntityBuilder<T>;
     function HasProperty(const APropertyName: string): TEntityBuilder<T>;
     
     // Property Configuration (Applied to current property)
@@ -251,6 +252,7 @@ type
     function IsVersion(AValue: Boolean = True): TEntityBuilder<T>;
     function IsCreatedAt(AValue: Boolean = True): TEntityBuilder<T>;
     function IsUpdatedAt(AValue: Boolean = True): TEntityBuilder<T>;
+    function IsShadow(AValue: Boolean = True): TEntityBuilder<T>;
     function Ignore: TEntityBuilder<T>;
     
     // Relationship Support (Returning IRelationshipBuilder)
@@ -535,7 +537,7 @@ begin
 
         for var InnerFld in Fld.FieldType.GetFields do
         begin
-          if SameText(InnerFld.Name, 'FHasValue') then
+          if SameText(InnerFld.Name, 'FHasValue') or SameText(InnerFld.Name, 'FInfo') then
             PropMap.FieldOffset := Fld.Offset + InnerFld.Offset
           else if SameText(InnerFld.Name, 'FValue') then
           begin
@@ -834,6 +836,13 @@ begin
   Result := Self;
 end;
 
+function TEntityBuilder<T>.ShadowProperty(const APropName: string): TEntityBuilder<T>;
+begin
+  FCurrentProp := FMap.GetOrAddProperty(APropName);
+  FCurrentProp.IsShadow := True;
+  Result := Self;
+end;
+
 function TEntityBuilder<T>.HasProperty(const APropertyName: string): TEntityBuilder<T>;
 begin
   Result := Prop(APropertyName);
@@ -916,6 +925,12 @@ end;
 function TEntityBuilder<T>.IsUpdatedAt(AValue: Boolean): TEntityBuilder<T>;
 begin
   GetCurrentProp.IsUpdatedAt := AValue;
+  Result := Self;
+end;
+
+function TEntityBuilder<T>.IsShadow(AValue: Boolean): TEntityBuilder<T>;
+begin
+  GetCurrentProp.IsShadow := AValue;
   Result := Self;
 end;
 

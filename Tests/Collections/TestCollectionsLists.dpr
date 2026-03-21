@@ -10,7 +10,7 @@ uses
   Dext.Core.Activator,
   Dext.Json,
   Dext.Json.Types,
-  Dext.Collections
+  Dext.Collections,
   Dext.Utils;
 
 type

@@ -92,7 +92,7 @@ procedure TClassProxy.Unproxify;
 begin
   if Assigned(FVMI) then
   begin
-    if Assigned(FInstance) then
+    if Assigned(FInstance) and not FInstanceIsDead then
       FVMI.Unproxify(FInstance);
     FreeAndNil(FVMI);
   end;

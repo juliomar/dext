@@ -34,7 +34,8 @@ begin
         TProductDataSetTests,
         TMasterDetailDataSetTests,
         TEntityDataSetStressTests,
-        TDataSetSmartTypesTests
+        TDataSetSmartTypesTests,
+        TShadowDataSetTests
       ]).Run;
 
     TTest.SetExitCode(TestResult);

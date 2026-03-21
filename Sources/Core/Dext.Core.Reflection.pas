@@ -214,6 +214,14 @@ begin
   // Handling SmartProps during SetValue
   if IsSmartProp(TargetType) then
   begin
+    // Fast path: if the value is already of the target type, just set it directly
+    if AValue.TypeInfo = TargetType then
+    begin
+      if AMember is TRttiProperty then TRttiProperty(AMember).SetValue(AInstance, AValue)
+      else if AMember is TRttiField then TRttiField(AMember).SetValue(AInstance, AValue);
+      Exit;
+    end;
+
     var Current: TValue;
     if AMember is TRttiProperty then Current := TRttiProperty(AMember).GetValue(AInstance)
     else if AMember is TRttiField then Current := TRttiField(AMember).GetValue(AInstance);
